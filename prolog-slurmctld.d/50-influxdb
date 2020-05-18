@@ -1,0 +1,20 @@
+#! /bin/bash
+set -euo pipefail
+
+readonly job_info=$(scontrol show -o "job=$SLURM_JOB_ID")
+readonly user=$(grep -Eo 'UserId=\S+' <<< "${job_info}" | cut -d= -f2- | cut -d'(' -f1)
+readonly account=$(grep -Eo 'Account=\S+' <<< "${job_info}" | cut -d= -f2-)
+readonly qos=$(grep -Eo 'QOS=\S+' <<< "${job_info}" | cut -d= -f2-)
+readonly partition=$(grep -Eo 'Partition=\S+' <<< "${job_info}" | cut -d= -f2-)
+readonly submit_time=$(grep -Eo 'SubmitTime=\S+' <<< "${job_info}" | cut -d= -f2- | tr 'T' ' ')
+readonly start_time=$(grep -Eo 'StartTime=\S+' <<< "${job_info}" | cut -d= -f2- | tr 'T' ' ')
+readonly hidden=$(scontrol show partition -ao "${partition}" | grep -Eo 'Hidden=\S+' | cut -d= -f2-)
+
+readonly submit_time_sec=$(date -d "${submit_time}" +%s)
+readonly start_time_sec=$(date -d "${start_time}" +%s)
+readonly queue_seconds=$(( start_time_sec - submit_time_sec ))
+
+readonly tags="username=${user},account=${account},qos=${qos},partition=${partition},hidden=${hidden}"
+curl -fSsL -XPOST 'http://circe-mgmt-01:8086/write?db=db&u=writer&p=writer' \
+    --data-binary "slurm_job_queue_before_alloc_seconds,${tags} value=${queue_seconds}" \
+    || :
